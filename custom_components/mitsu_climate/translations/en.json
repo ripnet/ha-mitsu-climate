@@ -1,0 +1,31 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Mitsubishi Climate Lookup",
+                "description": "Create a Fahrenheit wrapper around an existing climate entity using a custom lookup table.",
+                "data": {
+                    "name": "Name",
+                    "source_entity": "Source climate entity",
+                    "reverse_policy": "Reverse lookup policy"
+                },
+                "data_description": {
+                    "name": "Display name for the new climate entity.",
+                    "source_entity": "The underlying climate entity (reports Celsius) that this wrapper will control.",
+                    "reverse_policy": "When multiple Celsius values map to the same Fahrenheit, which one to send to the device."
+                }
+            }
+        },
+        "abort": {
+            "already_configured": "This source entity already has a lookup wrapper."
+        }
+    },
+    "selector": {
+        "reverse_policy": {
+            "options": {
+                "lowest": "Lowest C (matches most thermostats)",
+                "highest": "Highest C"
+            }
+        }
+    }
+}

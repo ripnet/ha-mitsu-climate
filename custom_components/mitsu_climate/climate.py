@@ -35,6 +35,31 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Features this wrapper actually implements. The source entity's feature flags
+# are intersected with this set so we never advertise something we can't do
+# (e.g. TARGET_TEMPERATURE_RANGE, which mitsubishi_itp v2 firmware reports).
+_MIRRORED_FEATURES = (
+    ClimateEntityFeature.TARGET_TEMPERATURE
+    | ClimateEntityFeature.FAN_MODE
+    | ClimateEntityFeature.SWING_MODE
+    | ClimateEntityFeature.PRESET_MODE
+    | ClimateEntityFeature.TURN_ON
+    | ClimateEntityFeature.TURN_OFF
+)
+
+
+def _display_to_c(hass: HomeAssistant, val: Any) -> float | None:
+    """Convert a state-attribute temperature (HA display unit) to Celsius."""
+    if val is None:
+        return None
+    try:
+        num = float(val)
+    except (TypeError, ValueError):
+        return None
+    if hass.config.units.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+        return (num - 32) * 5 / 9
+    return num
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -143,8 +168,9 @@ class LookupClimate(ClimateEntity):
                 self._attr_hvac_modes = [HVACMode(m) for m in modes]
             except ValueError:
                 self._attr_hvac_modes = [HVACMode.OFF]
-        self._attr_supported_features = ClimateEntityFeature(
-            attrs.get("supported_features", 0)
+        self._attr_supported_features = (
+            ClimateEntityFeature(attrs.get("supported_features", 0))
+            & _MIRRORED_FEATURES
         )
 
         # Mirror fan / swing / preset so capability_attributes doesn't blow up
@@ -179,12 +205,17 @@ class LookupClimate(ClimateEntity):
                     "Results may be incorrect.",
                     self._source_entity, native_unit,
                 )
+            # Use the device's real setpoint limits (native C) instead of the
+            # full 0-140F span of the lookup table.
+            self._attr_min_temp = c_to_f(source_entity.min_temp) or MIN_F
+            self._attr_max_temp = c_to_f(source_entity.max_temp) or MAX_F
         else:
             # Fallback if the entity object isn't accessible yet -- read the
-            # state attributes (which HA may have converted). This only runs
-            # transiently during startup.
-            current_c = attrs.get("current_temperature")
-            target_c = attrs.get("temperature")
+            # state attributes. These are in HA's display unit, so undo HA's
+            # standard conversion to get back to (approximate) Celsius before
+            # the table lookup. This only runs transiently during startup.
+            current_c = _display_to_c(self.hass, attrs.get("current_temperature"))
+            target_c = _display_to_c(self.hass, attrs.get("temperature"))
 
         def _safe_c_to_f(val: Any) -> int | None:
             if val is None:
@@ -214,7 +245,7 @@ class LookupClimate(ClimateEntity):
 
         if temp_f is None:
             _LOGGER.warning(
-                "lookup_climate does not yet support target_temp_low/high"
+                "mitsu_climate does not support target_temp_low/high"
             )
             return
 
@@ -256,6 +287,24 @@ class LookupClimate(ClimateEntity):
             await self.hass.services.async_call(
                 "climate", "set_temperature", service_data, blocking=True,
             )
+
+    async def async_turn_on(self) -> None:
+        """Forward turn_on to the source entity."""
+        await self.hass.services.async_call(
+            "climate",
+            "turn_on",
+            {"entity_id": self._source_entity},
+            blocking=True,
+        )
+
+    async def async_turn_off(self) -> None:
+        """Forward turn_off to the source entity."""
+        await self.hass.services.async_call(
+            "climate",
+            "turn_off",
+            {"entity_id": self._source_entity},
+            blocking=True,
+        )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Forward HVAC mode changes to the source entity."""

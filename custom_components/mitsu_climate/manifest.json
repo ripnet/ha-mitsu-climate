@@ -1,11 +1,12 @@
 {
   "domain": "mitsu_climate",
   "name": "Mitsubishi Climate Lookup",
-  "version": "0.1.0",
-  "documentation": "",
-  "requirements": [],
+  "codeowners": ["@ripnet"],
+  "config_flow": true,
   "dependencies": [],
-  "codeowners": [],
-  "iot_class": "local_polling",
-  "config_flow": true
+  "documentation": "https://github.com/ripnet/ha-mitsu-climate",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/ripnet/ha-mitsu-climate/issues",
+  "requirements": [],
+  "version": "0.2.0"
 }
